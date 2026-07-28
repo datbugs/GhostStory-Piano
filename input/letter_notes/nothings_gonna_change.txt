@@ -1,0 +1,14 @@
+# title: Nothing's Gonna Change My Love For You
+# artist: George Benson / Glenn Medeiros
+# key: C (transposed for in-game; original Db)
+# bpm: 90
+# style: Ballad
+# chords: C G Am F Dm G (tông C)
+# source: piano letter notes (PSR USER) + cảm âm (camamviet)
+# method: same as Cause I Love You → compact Ghost Story MML
+
+[Verse] E F G E G E G E G D' C E | C B C' B G E D C | A F' G A F E F E D
+[Bridge] A B C D C G | G F' E F G F C | A B C G B C A B C A E' D C D
+[Chorus] E' E' E' E' G' G' A' A' | A D' D' D' D' D' F E F' E' D' C'
+         C' B C' D' A A B | B C' C' C' C' C' C' B A B
+         ... D' E' D' C'

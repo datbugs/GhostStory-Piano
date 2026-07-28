@@ -1,0 +1,8 @@
+===== TRACK A (copy → Track A trong game) =====
+t60v15r1a4.g8a4&a16b16>c16d16<b8g4e8g2f2b8g8d8g2&g8a+2a4.g8a4&a16b16>c16d16<b8g4e8g2f1g1f1g1f2g1&g2f1g1f2g1a+2a4.g16a4.&a16>d8<b8g4e16g4&g16r8g16a16f2b8g8d8g2&g8a+2a4.g16a4.&a16>d8<b8g4e16g4&g16r8d16e16f1g1&g1b4g8.e4.f16g4f4e16f4&f16g8a4&a16g2.&g16r2r8c8>c8<g8a4.g16a4.&a16>d8<b8g4e16g4&g16r8g16a16f2b8g8d8g2&g8a+2a4.g16a4.&a16>d8<b8g4e16g4&g16r8d16e16f1g1&g1
+
+===== TRACK B (copy → Track B trong game) =====
+t60v15r1f1g2.a+16a16g16a16f8e8f8>c8<g2f4e4g2f1g2.c+16d16e16g16f8e8>c4<f8e8d8e2&e8f2e1&e1d2f2g8.e2&e16r4e1&e1d2f2e2g2f1g1f8e16f8.>c8<g2f8.e4&e16g2f1g1f8e16f4e16f8e16f8.e8d2f1e2g1f2a2g1&g1f1g1f8e16f8.>c8<g2f8.e4&e16g2f1g1f8e16f4e16f8e16f8.e8d2f1e2
+
+===== TRACK C (copy → Track C trong game) =====
+t60v15r1c1d2c+2c2d2c1&c1d2c+2c1&c2d4r4c1d8e4d16e4&e16r8d16e16c8<b16>c8.e8d4c8d8c1&c1d8e4d16e4&e16r8d16e16c8<b16>c8.e8d4c8<b8>c1&c1d2c+2c2d2c1&c1d2c+2c1&c2&c8d4<b8>c2&c8d8e8>c8<d2c+2c1&c2d1&d2c1d2c+2c2d2c1&c1d2c+2c1&c2&c8d4<b8>c1

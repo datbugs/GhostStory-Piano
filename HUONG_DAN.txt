@@ -1,0 +1,76 @@
+========================================
+  Ghost Story Piano
+========================================
+
+Folder: ~/Documents/GhostStory-Piano
+
+  input/          ← bỏ .mid hoặc .txt vào đây
+  input/letter_notes/
+  output/         ← kết quả mỗi bài 1 folder
+  convert.sh      ← MIDI → Ghost Story
+  convert_letter.sh ← Letter notes → Ghost Story
+
+Cài 1 lần:
+  cd ~/Documents/GhostStory-Piano
+  pip3 install -r requirements.txt
+
+========================================
+CÁCH 1: MIDI
+========================================
+
+1. Bỏ file .mid vào input/
+2. Chạy:
+     ./convert.sh ten_bai.mid
+     ./convert.sh ten_bai.mid --bpm 90
+
+3. Kết quả:
+     track_A_single.ghost.txt     ← DÙNG NGAY (1 kỹ năng → Track A)
+     track_A_ghoststory.txt       ← thêm sau
+     track_B_harmony.ghost.txt    ← thêm sau
+     track_C_bass.ghost.txt       ← thêm sau
+     gop_ABC.txt                  ← bản ghộp A/B/C
+
+4. Hiện tại: copy track_A_single → dán Track A
+   Sau mở skill: thêm B rồi C từ cùng folder
+
+========================================
+CÁCH 2: Letter notes (paste 4|...|)
+========================================
+
+Format (pianoletternotes):
+  4|G-G--G--F-e-C-------------|
+  3|-------------C------------|
+  3|-------------e------------|
+  2|-------------a------------|
+  1
+  4|-GG---G--F-eD-------------|
+  ...
+
+Quy tắc: chữ thường = nốt trắng; A C D F G hoa = # ;
+số đầu dòng = octave; - = nghỉ; số 1,2,3… = ô nhịp (bỏ qua).
+
+1. Paste vào:
+     input/letter_notes/ten_bai.txt
+   (xem mẫu: input/letter_notes/_MAU.txt)
+
+2. Chạy:
+     ./convert_letter.sh ten_bai.txt --bpm 100
+     ./convert_letter.sh ten_bai.txt --bpm 100 --title "Ten Bai"
+
+3. Kết quả:
+     output/ten_bai/track_A_ghoststory.txt
+
+4. Copy hết → dán Track A · tốc độ ≈ BPM đã chọn
+
+Tuỳ chọn:
+  --bpm 100       tốc độ
+  --title "Tên"   tên folder output
+  --min-oct 5     chỉ lấy octave cao (nếu >3000 ký tự)
+  --key Am
+
+========================================
+LƯU Ý
+========================================
+- Giới hạn Track A: 3000 ký tự
+- Letter notes: cùng cột nhiều nốt → giữ nốt cao (giai điệu)
+- Octave thấp (< 4) mặc định bỏ (bass LH)
