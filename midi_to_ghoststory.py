@@ -3,10 +3,10 @@
 MIDI → Ghost Story Piano MML.
 
 Logic convert theo kiểu 3MLE / MabiIcco (mmlTools MidiFile.java):
-  - Đổi tick MIDI → lưới TPQN=96
-  - Nốt chồng nhau → tách sang voice mới (giữ hợp âm qua Track A/B/C)
-  - Mỗi voice là mono → encode MML (t/v/<>/&/.)
-  - Tối đa 3 voice → Track A / B / C
+  - Đổi tick MIDI → lưới TPQN=96 · encode 1/64 (32/64 + chấm)
+  - Track A = giai điệu mono (nốt cao nhất mỗi thời điểm)
+  - Track B / C = voice hòa âm / bass (tách nốt chồng)
+  - Encode MML (t/v/o/l/<>/&/.) · l mặc định khi chuỗi cùng length
 
 Dùng:
   python3 midi_to_ghoststory.py bai.mid
@@ -28,10 +28,9 @@ except ImportError:
 
 # MabiIcco MMLTickTable.TPQN
 TPQN = 96
-# 1/64 nội bộ (parse), rồi quantize về 1/16 khi encode (Ghost Story ổn định hơn)
+# 1/64 = TPQN*4/64 = 6 — lưới encode chi tiết (giống MabiIcco / bản Cause I Love You)
 MIN_TICK = 6
-# 1/16 note = TPQN * 4 / 16 = 24 — độ phân giải encode cho game
-GRID_16 = 24
+GRID = MIN_TICK
 
 NOTE_NAMES = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b"]
 
@@ -41,7 +40,7 @@ def _len_ticks(n: int, dotted: bool = False) -> int:
     return t + t // 2 if dotted else t
 
 
-# Ghost Story: chỉ dùng 1/1 … 1/16 (+ chấm) — tránh 32/64
+# 1/1 … 1/64 (+ chấm) — chi tiết như MabiIcco export
 LEN_PREFER = [
     (1, False),
     (2, True),
@@ -52,12 +51,16 @@ LEN_PREFER = [
     (8, False),
     (16, True),
     (16, False),
+    (32, True),
+    (32, False),
+    (64, True),
+    (64, False),
 ]
 
 
-def quantize_16(tick: int) -> int:
-    """Làm tròn về lưới 1/16."""
-    return int(round(tick / GRID_16) * GRID_16)
+def quantize(tick: int, grid: int = GRID) -> int:
+    """Làm tròn về lưới 1/64 (hoặc grid tùy chọn)."""
+    return int(round(tick / grid) * grid)
 
 
 def safe_name(name: str) -> str:
@@ -160,10 +163,9 @@ def split_voices(notes: list[dict]) -> list[list[dict]]:
 
 
 def ticks_to_mml_parts(ticks: int) -> list[str]:
-    """Phân tick thành các length token (1, 2, 4., 8, …)."""
+    """Phân tick thành các length token (1, 2, 4., 8, 16, 32, 64 …)."""
     rem = ticks
     parts: list[str] = []
-    # Nuốt nốt trắng chấm nếu rất dài
     whole_dot = _len_ticks(1, True)
     whole = _len_ticks(1, False)
     while rem > whole * 2:
@@ -179,7 +181,6 @@ def ticks_to_mml_parts(ticks: int) -> list[str]:
                 best = (t, tok)
                 break
         if best is None:
-            # không khớp — bỏ phần dư nhỏ
             break
         t, tok = best
         parts.append(tok)
@@ -187,57 +188,95 @@ def ticks_to_mml_parts(ticks: int) -> list[str]:
     return parts
 
 
-def emit_length(name: str, ticks: int, tie: bool = True) -> str:
+def single_len_token(ticks: int) -> str | None:
+    """Trả về token length nếu ticks khớp đúng 1 độ dài (vd '16', '8.'); else None."""
+    for n, dotted in LEN_PREFER:
+        if _len_ticks(n, dotted) == ticks:
+            return f"{n}." if dotted else str(n)
+    return None
+
+
+def emit_length(name: str, ticks: int, tie: bool = True, default_l: str | None = None) -> str:
+    """
+    Emit note/rest với length.
+    Nếu default_l khớp độ dài đơn → chỉ ghi tên nốt (như l16adfadf…).
+    """
     parts = ticks_to_mml_parts(ticks)
     if not parts:
         return ""
+    if (
+        tie
+        and len(parts) == 1
+        and default_l is not None
+        and parts[0] == default_l
+        and name != "r"
+    ):
+        return name
     if tie and len(parts) > 1:
         return "&".join(name + p for p in parts)
     if tie:
         return name + parts[0]
-    # rest: không dùng &
+    # rest: không dùng &; rest cũng hưởng default l nếu khớp
+    if len(parts) == 1 and default_l is not None and parts[0] == default_l:
+        return name
     return "".join(name + p for p in parts)
 
 
 def encode_voice(notes: list[dict], bpm: int, vol: int, limit: int) -> str:
-    """Encode 1 voice mono → MML Ghost Story (lưới 1/16)."""
+    """Encode 1 voice mono → MML Ghost Story chi tiết (lưới 1/64 + l mặc định)."""
     if not notes:
         return ""
-    # Quantize start/dur về 1/16; gộp nốt liền cùng pitch
+    # Quantize start/dur về 1/64; gộp nốt liền cùng pitch
     qnotes: list[dict] = []
     for n in sorted(notes, key=lambda x: x["start"]):
-        start = quantize_16(n["start"])
-        end = max(start + GRID_16, quantize_16(n["start"] + n["dur"]))
+        start = quantize(n["start"])
+        end = max(start + GRID, quantize(n["start"] + n["dur"]))
         if qnotes and qnotes[-1]["note"] == n["note"] and qnotes[-1]["end"] >= start:
             qnotes[-1]["end"] = max(qnotes[-1]["end"], end)
             qnotes[-1]["dur"] = qnotes[-1]["end"] - qnotes[-1]["start"]
             continue
         if qnotes and start < qnotes[-1]["end"] and qnotes[-1]["note"] != n["note"]:
-            # cắt nốt trước cho khớp lưới
             qnotes[-1]["end"] = start
             qnotes[-1]["dur"] = start - qnotes[-1]["start"]
-            if qnotes[-1]["dur"] < GRID_16:
+            if qnotes[-1]["dur"] < GRID:
                 qnotes.pop()
         qnotes.append(
             {"start": start, "end": end, "dur": end - start, "note": n["note"]}
         )
-    qnotes = [n for n in qnotes if n["dur"] >= GRID_16]
+    qnotes = [n for n in qnotes if n["dur"] >= GRID]
     if not qnotes:
         return ""
-
-    out = f"t{bpm}v{vol}"
-    cur_oct = 4
-    cursor = 0
 
     def note_oct(midi: int) -> tuple[str, int]:
         midi = max(24, min(96, midi))
         return NOTE_NAMES[midi % 12], midi // 12 - 1
 
-    for n in qnotes:
+    # Octave tuyệt đối lúc đầu (oN) — giống bản Cause I Love You
+    _, start_oct = note_oct(qnotes[0]["note"])
+    out = f"t{bpm}v{vol}o{start_oct}"
+    cur_oct = start_oct
+    cursor = 0
+    default_l: str | None = None
+
+    def count_same_dur(from_i: int, dur: int) -> int:
+        """Đếm nốt liên tiếp cùng độ dài (cho phép gap ≤ 1/64)."""
+        cnt = 0
+        prev_end = qnotes[from_i]["start"]
+        for j in range(from_i, len(qnotes)):
+            gap = qnotes[j]["start"] - prev_end
+            if gap > GRID:
+                break
+            if qnotes[j]["dur"] != dur:
+                break
+            cnt += 1
+            prev_end = qnotes[j]["end"]
+        return cnt
+
+    for i, n in enumerate(qnotes):
         chunk = ""
         gap = n["start"] - cursor
-        if gap >= GRID_16:
-            chunk += emit_length("r", gap, tie=False)
+        if gap >= GRID:
+            chunk += emit_length("r", gap, tie=False, default_l=default_l)
 
         name, octv = note_oct(n["note"])
         while cur_oct < octv:
@@ -247,9 +286,16 @@ def encode_voice(notes: list[dict], bpm: int, vol: int, limit: int) -> str:
             chunk += "<"
             cur_oct -= 1
 
-        chunk += emit_length(name, n["dur"], tie=True)
+        tok = single_len_token(n["dur"])
+        # Chuỗi ≥3 nốt cùng length → đặt lN rồi ghi tên trần (l16adfadf…)
+        if tok and count_same_dur(i, n["dur"]) >= 3 and default_l != tok:
+            chunk += f"l{tok}"
+            default_l = tok
+            chunk += name
+        else:
+            chunk += emit_length(name, n["dur"], tie=True, default_l=default_l)
 
-        if len(out) + len(chunk) > limit:
+        if len(out) + len(chunk) >= limit:
             break
         out += chunk
         cursor = max(cursor, n["end"])
@@ -259,9 +305,8 @@ def encode_voice(notes: list[dict], bpm: int, vol: int, limit: int) -> str:
 
 def pick_three_voices(voices: list[list[dict]]) -> list[list[dict]]:
     """
-    Lấy tối đa 3 voice cho Track A/B/C.
-    Ưu tiên: nhiều nốt + phủ thời gian dài (giữ hợp âm chính).
-    Giữ thứ tự: cao → thấp để A≈melody, C≈bass khi có thể.
+    Lấy tối đa 3 voice (cao → thấp) để chọn B/C.
+    Ưu tiên: nhiều nốt + phủ thời gian dài.
     """
     if not voices:
         return []
@@ -274,13 +319,12 @@ def pick_three_voices(voices: list[list[dict]]) -> list[list[dict]]:
         return (len(v), span, avg_pitch)
 
     ranked = sorted(voices, key=score, reverse=True)[:3]
-    # Sắp lại theo pitch trung bình giảm dần: A cao, B giữa, C thấp
     ranked.sort(key=lambda v: -(sum(n["note"] for n in v) / len(v)))
     return ranked
 
 
 def to_mono_melody(notes: list[dict]) -> list[dict]:
-    """1 track: cùng lúc nhiều nốt → giữ nốt cao nhất (giai điệu)."""
+    """Track A: cùng lúc nhiều nốt → giữ nốt cao nhất (giai điệu)."""
     by_start: dict[int, list[dict]] = {}
     for n in notes:
         if not (24 <= n["note"] <= 96):
@@ -290,7 +334,6 @@ def to_mono_melody(notes: list[dict]) -> list[dict]:
     for start in sorted(by_start):
         best = max(by_start[start], key=lambda x: (x["note"], x.get("vel", 0)))
         mono.append(best.copy())
-    # cắt nếu nốt sau bắt đầu trước khi nốt trước kết thúc
     for i in range(len(mono) - 1):
         if mono[i]["end"] > mono[i + 1]["start"]:
             mono[i]["end"] = mono[i + 1]["start"]
@@ -306,13 +349,11 @@ def convert_to_folder(
     limit: int = 3000,
     channel: int = -1,
     grid: int = 4,  # giữ arg cũ cho convert.sh; không dùng (logic tick TPQN)
-    single: bool = False,
 ):
     notes, detected_bpm, length_sec, _res = parse_midi(midi_path)
     use_bpm = bpm or detected_bpm or 90
 
     if channel >= 0:
-        # lọc 1 channel nếu user chỉ định (channel lưu không còn — parse lại)
         mid = MidiFile(midi_path)
         filtered = []
         for track in mid.tracks:
@@ -344,89 +385,67 @@ def convert_to_folder(
                         )
         notes = sorted(filtered, key=lambda n: (n["start"], n["note"]))
 
-    if single:
-        # Chỉ tạo bản 1 kỹ năng; không xóa A/B/C có sẵn
-        voices = [to_mono_melody(notes)] if notes else []
-        chosen = []
-    else:
-        voices = split_voices(notes)
-        chosen = pick_three_voices(voices)
+    voices = split_voices(notes) if notes else []
+    ranked = pick_three_voices(voices)
+    # A = mono; B/C = voice thứ 2 / 3 (bỏ voice cao trùng giai điệu)
+    mono_notes = to_mono_melody(notes)
+    track_notes = [
+        mono_notes,
+        ranked[1] if len(ranked) > 1 else [],
+        ranked[2] if len(ranked) > 2 else [],
+    ]
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if not single:
-        # Convert đủ: xóa rồi ghi lại A/B/C + single + gop
-        for old in out_dir.glob("track_*.txt"):
+    for pattern in ("track_*.txt", "track_*.ghost.txt", "gop_*.txt", "gop_*.mml.txt"):
+        for old in out_dir.glob(pattern):
             old.unlink()
-        for old in out_dir.glob("track_*.ghost.txt"):
-            old.unlink()
-        gop_old = out_dir / "gop_ABC.txt"
-        if gop_old.exists():
-            gop_old.unlink()
 
+    labels = [
+        ("A", "track_A_single.ghost.txt", "giai điệu mono"),
+        ("B", "track_B_harmony.ghost.txt", "hòa âm"),
+        ("C", "track_C_bass.ghost.txt", "bass"),
+    ]
     files = []
     lines = []
-    codes: list[str] = ["", "", ""]
-    counts = [0, 0, 0]
+    codes = ["", "", ""]
 
-    # —— Track A/B/C (thêm sau khi mở kỹ năng) ——
-    labels = [
-        ("A", "track_A_ghoststory.txt", "voice cao — thêm sau"),
-        ("B", "track_B_harmony.ghost.txt", "hòa âm — thêm sau"),
-        ("C", "track_C_bass.ghost.txt", "bass — thêm sau"),
-    ]
-    if not single:
-        for i, (tag, fname, desc) in enumerate(labels):
-            if i >= len(chosen):
-                continue
-            code = encode_voice(chosen[i], use_bpm, vol, limit)
-            codes[i] = code
-            counts[i] = len(chosen[i])
-            (out_dir / fname).write_text(code + "\n", encoding="utf-8")
-            files.append(fname)
-            avg = sum(n["note"] for n in chosen[i]) / len(chosen[i])
-            lines.append(
-                f"- {fname}  ({len(code)}/{limit}) — Track {tag} ({desc}, ~pitch {avg:.0f}, {len(chosen[i])} nốt)"
-            )
-
-    # —— Bản 1 kỹ năng (giai điệu mono) ——
-    mono_notes = to_mono_melody(notes)
-    code_single = encode_voice(mono_notes, use_bpm, vol, limit) if mono_notes else ""
-    single_name = "track_A_single.ghost.txt"
-    if code_single:
-        (out_dir / single_name).write_text(code_single + "\n", encoding="utf-8")
-        files.append(single_name)
-        lines.insert(
-            0,
-            f"- {single_name}  ({len(code_single)}/{limit}) — DÙNG NGAY (1 kỹ năng → dán Track A)",
-        )
-
-    # Bản ghộp A/B/C
-    if not single and sum(1 for c in codes if c) >= 2:
-        gop_name = "gop_ABC.txt"
-        gop_parts = []
-        for i, tag in enumerate("ABC"):
-            if not codes[i]:
-                continue
-            gop_parts.append(f"===== TRACK {tag} (copy → Track {tag} trong game) =====")
-            gop_parts.append(codes[i])
-            gop_parts.append("")
-        if gop_parts:
-            (out_dir / gop_name).write_text(
-                "\n".join(gop_parts).rstrip() + "\n", encoding="utf-8"
-            )
-            files.append(gop_name)
-            lines.append(f"- {gop_name}  — bản ghộp A/B/C")
-
-    if not single and len(chosen) < 2:
-        lines.append(f"- Chỉ tách được {len(chosen)} voice (MIDI ít chồng nốt)")
-    if not single and len(voices) > 3:
+    for i, (tag, fname, desc) in enumerate(labels):
+        ns = track_notes[i]
+        if not ns:
+            continue
+        code = encode_voice(ns, use_bpm, vol, limit)
+        codes[i] = code
+        (out_dir / fname).write_text(code + "\n", encoding="utf-8")
+        files.append(fname)
+        avg = sum(n["note"] for n in ns) / len(ns)
         lines.append(
-            f"- MIDI có {len(voices)} voice; giữ 3 voice nhiều nốt nhất (bỏ {len(voices) - 3})"
+            f"- {fname}  ({len(code)}/{limit}) — Track {tag} ({desc}, ~pitch {avg:.0f}, {len(ns)} nốt)"
         )
 
-    n_voice = len(chosen) if not single else 0
-    n_total = len(voices) if not single else 1
+    used = sum(1 for c in codes if c)
+    if len(voices) > 3:
+        lines.append(
+            f"- MIDI có {len(voices)} voice; B/C lấy từ top voice (bỏ {len(voices) - 3})"
+        )
+    elif used < 3 and len(voices) < 3:
+        lines.append(f"- Chỉ tách được {used} track (MIDI ít chồng nốt)")
+
+    # Bản ghép 1 dòng: MML@T..TrackA...,T..TrackB...,T..TrackC...;
+    mml_parts = []
+    for code in codes:
+        if not code:
+            continue
+        # MML@ dùng T (hoa) thay vì t
+        part = "T" + code[1:] if code.startswith("t") else code
+        mml_parts.append(part)
+    if mml_parts:
+        gop_name = "gop_ABC.mml.txt"
+        gop = "MML@" + ",".join(mml_parts) + ";\n"
+        (out_dir / gop_name).write_text(gop, encoding="utf-8")
+        files.append(gop_name)
+        lines.append(f"- {gop_name}  — ghép A/B/C dạng MML@…;")
+
     song = out_dir.name
     file_list = "\n".join(lines) if lines else "- (không có nốt)"
     readme = f"""# {song} → Ghost Story Piano
@@ -434,27 +453,23 @@ def convert_to_folder(
 Nguồn: {Path(midi_path).name}
 BPM: {use_bpm}
 Độ dài MIDI: {length_sec:.1f}s
-Engine: MabiIcco-style + bản single
-Voices ABC: {n_voice}/{n_total if not single else "—"}
+Engine: MabiIcco-style · A single + B harmony + C bass
+Voices nguồn: {len(voices)}
 
 ## File
 {file_list}
 
 ## Cách dùng
-### Bây giờ (mới mở 1 kỹ năng)
-1. Mở **track_A_single.ghost.txt** → Copy hết → dán **Track A**
-2. Tốc độ âm thanh ≈ {use_bpm}
-
-### Sau này (mở thêm kỹ năng Track B/C)
-1. track_A_ghoststory.txt → Track A
+1. track_A_single.ghost.txt → Track A
 2. track_B_harmony.ghost.txt → Track B
 3. track_C_bass.ghost.txt → Track C
-   (hoặc copy từng đoạn trong gop_ABC.txt)
+4. gop_ABC.mml.txt → copy cả khối MML@A,B,C; (nếu tool/player hỗ trợ)
+5. Tốc độ âm thanh ≈ {use_bpm}
 
 ## Ghi chú
-- track_A_single = giai điệu mono (1 track)
-- track_A/B/C = tách voice (hợp âm), thêm dần khi mở skill
-- Format: MML Ghost Story (t/v/<>/&/.)
+- A = giai điệu mono · B = hòa âm · C = bass
+- Format: MML chi tiết (t/v/o/l/<>/&/. · 1/64) · tối đa {limit} ký tự / track
+- gop_ABC.mml.txt = MML@T…A…,T…B…,T…C…;
 """
     (out_dir / "README.txt").write_text(readme, encoding="utf-8")
     files.append("README.txt")
@@ -465,16 +480,11 @@ Voices ABC: {n_voice}/{n_total if not single else "—"}
         "chars_a": len(codes[0]),
         "chars_b": len(codes[1]),
         "chars_c": len(codes[2]),
-        "chars_single": len(code_single),
-        "mel_ch": f"v0/{counts[0]}" if counts[0] else "n/a",
-        "bass_ch": f"v2/{counts[2]}" if counts[2] else "n/a",
-        "harm_ch": f"v1/{counts[1]}" if counts[1] else "n/a",
         "files": files,
         "limit": limit,
         "length_sec": round(length_sec, 1),
-        "voices": n_total,
-        "used": n_voice,
-        "single": single,
+        "voices": len(voices),
+        "used": used,
     }
 
 
@@ -488,12 +498,6 @@ def main():
     ap.add_argument("--vol", type=int, default=15)
     ap.add_argument("--limit", type=int, default=3000)
     ap.add_argument("--channel", type=int, default=-1, help="Chỉ lấy 1 MIDI channel")
-    ap.add_argument(
-        "--single",
-        "-s",
-        action="store_true",
-        help="Chỉ ghi lại track_A_single (không đụng A/B/C đã có)",
-    )
     ap.add_argument(
         "--grid",
         type=int,
@@ -521,31 +525,24 @@ def main():
         limit=args.limit,
         channel=args.channel,
         grid=args.grid,
-        single=args.single,
     )
 
     print(f"OK → {meta['out_dir']}/")
     for f in meta["files"]:
         print(f"  - {f}")
     parts = [f"BPM {meta['bpm']}", f"ABC {meta['used']}/{meta['voices']}"]
-    if meta.get("chars_single"):
-        parts.append(f"single {meta['chars_single']}")
-    if meta["chars_a"]:
-        parts.append(f"A {meta['chars_a']}")
-    if meta["chars_b"]:
-        parts.append(f"B {meta['chars_b']}")
-    if meta["chars_c"]:
-        parts.append(f"C {meta['chars_c']}")
+    for tag, key in (("A", "chars_a"), ("B", "chars_b"), ("C", "chars_c")):
+        if meta[key]:
+            parts.append(f"{tag} {meta[key]}")
     print("  " + " | ".join(parts))
-    if meta.get("chars_single", 0) >= meta["limit"] or meta["chars_a"] >= meta["limit"]:
+    if any(meta[k] >= meta["limit"] for k in ("chars_a", "chars_b", "chars_c")):
         print("  (một track đã cắt vì chạm giới hạn ký tự)")
 
     if args.do_print:
         print()
-        sp = out_dir / "track_A_single.ghost.txt"
-        apath = out_dir / "track_A_ghoststory.txt"
-        target = sp if sp.exists() else apath
-        print(target.read_text(encoding="utf-8").strip())
+        print(
+            (out_dir / "track_A_single.ghost.txt").read_text(encoding="utf-8").strip()
+        )
 
 
 if __name__ == "__main__":

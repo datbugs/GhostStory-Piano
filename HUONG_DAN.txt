@@ -4,10 +4,12 @@
 
 Folder: ~/Documents/GhostStory-Piano
 
-  input/          ← bỏ .mid hoặc .txt vào đây
+  input/          ← file .mid sẵn sàng convert
+  parts/          ← phần lẻ name.mid, name1.mid… (chưa ghép)
   input/letter_notes/
   output/         ← kết quả mỗi bài 1 folder
   convert.sh      ← MIDI → Ghost Story
+  merge_midi.sh   ← ghép parts/ → input/*_gop.mid
   convert_letter.sh ← Letter notes → Ghost Story
 
 Cài 1 lần:
@@ -24,14 +26,24 @@ CÁCH 1: MIDI
      ./convert.sh ten_bai.mid --bpm 90
 
 3. Kết quả:
-     track_A_single.ghost.txt     ← DÙNG NGAY (1 kỹ năng → Track A)
-     track_A_ghoststory.txt       ← thêm sau
-     track_B_harmony.ghost.txt    ← thêm sau
-     track_C_bass.ghost.txt       ← thêm sau
-     gop_ABC.txt                  ← bản ghộp A/B/C
+     track_A_single.ghost.txt     ← Track A (giai điệu mono)
+     track_B_harmony.ghost.txt    ← Track B (hòa âm)
+     track_C_bass.ghost.txt       ← Track C (bass)
+     gop_ABC.mml.txt              ← MML@T…A…,T…B…,T…C…;
 
-4. Hiện tại: copy track_A_single → dán Track A
-   Sau mở skill: thêm B rồi C từ cùng folder
+4. Copy A/B/C → Track A/B/C trong game · tốc độ ≈ BPM
+   (hoặc copy gop_ABC.mml.txt nếu tool hỗ trợ MML@)
+
+Ghép nhiều phần cùng bài:
+  1. Bỏ phần lẻ vào parts/ (không bỏ lẫn input/):
+       parts/ten_bai.mid
+       parts/ten_bai1.mid
+       parts/ten_bai2.mid
+     (hoặc parts/ten_bai/ten_bai.mid, ten_bai1.mid, ...)
+  2. Chạy:
+       ./merge_midi.sh ten_bai
+       ./merge_midi.sh ten_bai --convert
+     → tự tạo input/ten_bai_gop.mid
 
 ========================================
 CÁCH 2: Letter notes (paste 4|...|)
@@ -72,5 +84,6 @@ Tuỳ chọn:
 LƯU Ý
 ========================================
 - Giới hạn Track A: 3000 ký tự
+- MIDI convert: lưới 1/64 (có l32/r64, l mặc định) — chi tiết kiểu MabiIcco
 - Letter notes: cùng cột nhiều nốt → giữ nốt cao (giai điệu)
 - Octave thấp (< 4) mặc định bỏ (bass LH)
